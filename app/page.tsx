@@ -1,8 +1,9 @@
 "use client"
 
 import type React from "react"
-import { useState } from "react"
-import { Plus, Search, Heart, Edit2, Trash2, ExternalLink, Calendar, Tag } from "lucide-react"
+import { useState, useEffect } from "react"
+import { useRouter } from "next/navigation"
+import { Plus, Search, Heart, Edit2, Trash2, ExternalLink, Calendar, Tag, LogOut } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
@@ -22,146 +23,149 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog"
-
-const mockWishlists = [
-  { id: "1", name: "Fashion Finds", itemCount: 12, color: "emerald", description: "Curated pieces for my wardrobe" },
-  { id: "2", name: "Home Sanctuary", itemCount: 8, color: "terracotta", description: "Creating a cozy living space" },
-  { id: "3", name: "Literary Escapes", itemCount: 15, color: "blush", description: "Books that call to my soul" },
-  { id: "4", name: "Tech & Tools", itemCount: 6, color: "sage", description: "Gadgets that spark joy" },
-]
-
-const mockItems = [
-  {
-    id: "1",
-    title: "Vintage Leather Crossbody Bag",
-    price: "$128.00",
-    originalPrice: "$160.00",
-    image: "/placeholder-wakoz.png",
-    site: "Anthropologie",
-    wishlistId: "1",
-    priority: "high",
-    notes: "Perfect for everyday use, love the cognac color. Saw Sarah wearing one and it looked amazing.",
-    dateAdded: "2024-01-15",
-    tags: ["leather", "everyday", "cognac"],
-    inStock: true,
-  },
-  {
-    id: "2",
-    title: "Ceramic Planter Set of Three",
-    price: "$45.00",
-    image: "/white-ceramic-planter-set.png",
-    site: "West Elm",
-    wishlistId: "2",
-    priority: "medium",
-    notes: "Would look perfect on the windowsill with my herbs. Need to measure the space first.",
-    dateAdded: "2024-01-12",
-    tags: ["ceramic", "plants", "white"],
-    inStock: true,
-  },
-  {
-    id: "3",
-    title: "The Seven Husbands of Evelyn Hugo",
-    price: "$16.99",
-    image: "/seven-husbands-evelyn-hugo-cover.png",
-    site: "Amazon",
-    wishlistId: "3",
-    priority: "low",
-    notes: "Highly recommended by Sarah",
-    dateAdded: "2024-01-10",
-    tags: ["book", "fiction", "recommended"],
-    inStock: true,
-  },
-  {
-    id: "4",
-    title: "Wireless Charging Stand",
-    price: "$39.99",
-    originalPrice: "$49.99",
-    image: "/modern-wireless-charger.png",
-    site: "Apple",
-    wishlistId: "4",
-    priority: "high",
-    notes: "Need for bedside table",
-    dateAdded: "2024-01-08",
-    tags: ["tech", "gadget", "charging"],
-    inStock: true,
-  },
-  {
-    id: "5",
-    title: "Linen Button-Down Shirt",
-    price: "$78.00",
-    image: "/white-linen-shirt.png",
-    site: "Everlane",
-    wishlistId: "1",
-    priority: "medium",
-    notes: "Size medium, white or cream",
-    dateAdded: "2024-01-05",
-    tags: ["shirt", "linen", "medium"],
-    inStock: true,
-  },
-  {
-    id: "6",
-    title: "Moroccan Area Rug",
-    price: "$299.00",
-    originalPrice: "$399.00",
-    image: "/placeholder-g422o.png",
-    site: "Rugs USA",
-    wishlistId: "2",
-    priority: "high",
-    notes: "8x10 size for living room",
-    dateAdded: "2024-01-03",
-    tags: ["rug", "moroccan", "living room"],
-    inStock: true,
-  },
-]
+import { WishlistItem, Wishlist } from "@/lib/redis"
 
 export default function WishlistApp() {
-  const [wishlists, setWishlists] = useState(mockWishlists)
-  const [items, setItems] = useState(mockItems)
+  const [wishlists, setWishlists] = useState<Wishlist[]>([])
+  const [items, setItems] = useState<WishlistItem[]>([])
   const [selectedWishlist, setSelectedWishlist] = useState<string | null>(null)
   const [searchQuery, setSearchQuery] = useState("")
   const [isAddingItem, setIsAddingItem] = useState(false)
   const [isAddingWishlist, setIsAddingWishlist] = useState(false)
-  const [editingItem, setEditingItem] = useState<any>(null)
+  const [editingItem, setEditingItem] = useState<WishlistItem | null>(null)
   const [viewMode, setViewMode] = useState<"grid" | "list">("grid")
+  const [isLoading, setIsLoading] = useState(true)
+  const router = useRouter()
+
+  // Fetch data on component mount
+  useEffect(() => {
+    const loadData = async () => {
+      try {
+        const [wishlistsRes, itemsRes] = await Promise.all([
+          fetch('/api/wishlists'),
+          fetch('/api/items')
+        ])
+
+        if (wishlistsRes.ok && itemsRes.ok) {
+          const wishlistsData = await wishlistsRes.json()
+          const itemsData = await itemsRes.json()
+          setWishlists(wishlistsData)
+          setItems(itemsData)
+        }
+      } catch (error) {
+        console.error('Error loading data:', error)
+      } finally {
+        setIsLoading(false)
+      }
+    }
+
+    loadData()
+  }, [])
 
   const filteredItems = items.filter((item) => {
     const matchesSearch =
       item.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      item.site.toLowerCase().includes(searchQuery.toLowerCase())
+      item.site?.toLowerCase().includes(searchQuery.toLowerCase())
     const matchesWishlist = selectedWishlist ? item.wishlistId === selectedWishlist : true
     return matchesSearch && matchesWishlist
   })
 
-  const handleAddItem = (formData: any) => {
-    const newItem = {
-      id: Date.now().toString(),
-      ...formData,
-      dateAdded: new Date().toISOString().split("T")[0],
+  const handleAddItem = async (formData: any) => {
+    try {
+      const response = await fetch('/api/items', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(formData),
+      })
+
+      if (response.ok) {
+        const newItem = await response.json()
+        setItems([...items, newItem])
+        
+        // Update wishlist count in local state
+        setWishlists(wishlists.map(w => 
+          w.id === newItem.wishlistId 
+            ? { ...w, itemCount: w.itemCount + 1 }
+            : w
+        ))
+        
+        setIsAddingItem(false)
+      }
+    } catch (error) {
+      console.error('Error adding item:', error)
     }
-    setItems([...items, newItem])
-    setIsAddingItem(false)
   }
 
-  const handleEditItem = (formData: any) => {
-    setItems(items.map((item) => (item.id === editingItem.id ? { ...item, ...formData } : item)))
-    setEditingItem(null)
-  }
+  const handleEditItem = async (formData: any) => {
+    if (!editingItem) return
 
-  const handleDeleteItem = (itemId: string) => {
-    setItems(items.filter((item) => item.id !== itemId))
-  }
+    try {
+      const response = await fetch('/api/items', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: editingItem.id, ...formData }),
+      })
 
-  const handleAddWishlist = (name: string) => {
-    const colors = ["emerald", "rose", "amber", "blue", "purple", "teal"]
-    const newWishlist = {
-      id: Date.now().toString(),
-      name,
-      itemCount: 0,
-      color: colors[Math.floor(Math.random() * colors.length)],
-      description: "",
+      if (response.ok) {
+        const updatedItem = await response.json()
+        setItems(items.map((item) => (item.id === editingItem.id ? updatedItem : item)))
+        setEditingItem(null)
+      }
+    } catch (error) {
+      console.error('Error updating item:', error)
     }
-    setWishlists([...wishlists, newWishlist])
-    setIsAddingWishlist(false)
+  }
+
+  const handleDeleteItem = async (itemId: string) => {
+    try {
+      const response = await fetch(`/api/items?id=${itemId}`, {
+        method: 'DELETE',
+      })
+
+      if (response.ok) {
+        const deletedItem = items.find(item => item.id === itemId)
+        setItems(items.filter((item) => item.id !== itemId))
+        
+        // Update wishlist count in local state
+        if (deletedItem) {
+          setWishlists(wishlists.map(w => 
+            w.id === deletedItem.wishlistId 
+              ? { ...w, itemCount: Math.max(0, w.itemCount - 1) }
+              : w
+          ))
+        }
+      }
+    } catch (error) {
+      console.error('Error deleting item:', error)
+    }
+  }
+
+  const handleAddWishlist = async (name: string) => {
+    try {
+      const response = await fetch('/api/wishlists', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name }),
+      })
+
+      if (response.ok) {
+        const newWishlist = await response.json()
+        setWishlists([...wishlists, newWishlist])
+        setIsAddingWishlist(false)
+      }
+    } catch (error) {
+      console.error('Error adding wishlist:', error)
+    }
+  }
+
+  const handleLogout = async () => {
+    try {
+      await fetch('/api/auth/logout', { method: 'POST' })
+      router.push('/login')
+    } catch (error) {
+      console.error('Error logging out:', error)
+      router.push('/login')
+    }
   }
 
   const getPriorityColor = (priority: string) => {
@@ -175,6 +179,19 @@ export default function WishlistApp() {
       default:
         return "bg-gray-100 text-gray-800"
     }
+  }
+
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-background texture-linen flex items-center justify-center">
+        <div className="text-center">
+          <div className="w-8 h-8 bg-primary rounded-full flex items-center justify-center mx-auto mb-4">
+            <Heart className="h-4 w-4 text-primary-foreground" />
+          </div>
+          <p className="text-muted-foreground">Loading your wishlist...</p>
+        </div>
+      </div>
+    )
   }
 
   return (
@@ -222,6 +239,15 @@ export default function WishlistApp() {
                   List
                 </Button>
               </div>
+
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={handleLogout}
+                className="rounded-full"
+              >
+                <LogOut className="h-4 w-4" />
+              </Button>
             </div>
           </div>
         </div>
@@ -542,6 +568,48 @@ function ItemForm({ wishlists, onSubmit, initialData, defaultWishlist }: any) {
     notes: initialData?.notes || "",
     tags: initialData?.tags?.join(", ") || "",
   })
+  
+  const [url, setUrl] = useState("")
+  const [isScrapingUrl, setIsScrapingUrl] = useState(false)
+  const [scrapingError, setScrapingError] = useState("")
+
+  const handleScrapeUrl = async () => {
+    if (!url.trim()) return
+    
+    setIsScrapingUrl(true)
+    setScrapingError("")
+    
+    try {
+      const response = await fetch('/api/scrape', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url: url.trim() }),
+      })
+      
+      const result = await response.json()
+      
+      if (result.success && result.data) {
+        const data = result.data
+        setFormData({
+          ...formData,
+          title: data.title || formData.title,
+          price: data.price || formData.price,
+          originalPrice: data.originalPrice || formData.originalPrice,
+          image: data.image || formData.image,
+          site: data.site || formData.site,
+          notes: data.notes || formData.notes,
+          tags: data.tags ? data.tags.join(", ") : formData.tags,
+        })
+      } else {
+        setScrapingError(result.error || 'Failed to scrape URL')
+      }
+    } catch (error) {
+      console.error('Error scraping URL:', error)
+      setScrapingError('Failed to scrape URL. Please try again.')
+    } finally {
+      setIsScrapingUrl(false)
+    }
+  }
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
@@ -558,6 +626,36 @@ function ItemForm({ wishlists, onSubmit, initialData, defaultWishlist }: any) {
 
   return (
     <form onSubmit={handleSubmit} className="space-y-6">
+      <div>
+        <Label htmlFor="url" className="text-sm font-medium">
+          Product URL (Optional)
+        </Label>
+        <div className="flex space-x-2 mt-1">
+          <Input
+            id="url"
+            value={url}
+            onChange={(e) => setUrl(e.target.value)}
+            placeholder="https://example.com/product"
+            className="flex-1"
+          />
+          <Button
+            type="button"
+            onClick={handleScrapeUrl}
+            disabled={!url.trim() || isScrapingUrl}
+            variant="outline"
+            className="min-w-[100px]"
+          >
+            {isScrapingUrl ? "Scraping..." : "Auto Fill"}
+          </Button>
+        </div>
+        {scrapingError && (
+          <p className="text-sm text-destructive mt-1">{scrapingError}</p>
+        )}
+        <p className="text-xs text-muted-foreground mt-1">
+          Paste a product URL to automatically fill in the details below
+        </p>
+      </div>
+
       <div>
         <Label htmlFor="title" className="text-sm font-medium">
           Item Title
