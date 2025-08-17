@@ -4,6 +4,7 @@ import type React from "react"
 import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import { Plus, Search, Heart, Edit2, Trash2, ExternalLink, Calendar, Tag, LogOut } from "lucide-react"
+import { useAuth } from "@/lib/auth-client"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
@@ -36,9 +37,17 @@ export default function WishlistApp() {
   const [viewMode, setViewMode] = useState<"grid" | "list">("grid")
   const [isLoading, setIsLoading] = useState(true)
   const router = useRouter()
+  const { user, isLoading: authLoading, logout, requireAuth } = useAuth()
 
-  // Fetch data on component mount
+  // Auth check and data loading
   useEffect(() => {
+    if (authLoading) return // Wait for auth check to complete
+    
+    if (!user) {
+      router.push('/login')
+      return
+    }
+
     const loadData = async () => {
       try {
         const [wishlistsRes, itemsRes] = await Promise.all([
@@ -60,7 +69,7 @@ export default function WishlistApp() {
     }
 
     loadData()
-  }, [])
+  }, [user, authLoading, router])
 
   const filteredItems = items.filter((item) => {
     const matchesSearch =
@@ -159,13 +168,7 @@ export default function WishlistApp() {
   }
 
   const handleLogout = async () => {
-    try {
-      await fetch('/api/auth/logout', { method: 'POST' })
-      router.push('/login')
-    } catch (error) {
-      console.error('Error logging out:', error)
-      router.push('/login')
-    }
+    await logout()
   }
 
   const getPriorityColor = (priority: string) => {
@@ -181,7 +184,7 @@ export default function WishlistApp() {
     }
   }
 
-  if (isLoading) {
+  if (authLoading || isLoading) {
     return (
       <div className="min-h-screen bg-background texture-linen flex items-center justify-center">
         <div className="text-center">
