@@ -44,7 +44,8 @@ export default function WishlistApp() {
     if (authLoading) return // Wait for auth check to complete
     
     if (!user) {
-      router.push('/login')
+      // Use replace instead of push to avoid navigation issues
+      router.replace('/login')
       return
     }
 
@@ -184,7 +185,8 @@ export default function WishlistApp() {
     }
   }
 
-  if (authLoading || isLoading) {
+  // Show loading state while checking auth or if no user yet
+  if (authLoading || isLoading || !user) {
     return (
       <div className="min-h-screen bg-background texture-linen flex items-center justify-center">
         <div className="text-center">

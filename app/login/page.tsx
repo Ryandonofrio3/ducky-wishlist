@@ -30,7 +30,7 @@ export default function LoginPage() {
 
       if (response.ok) {
         // Login successful, redirect to home
-        router.push('/')
+        router.replace('/')
       } else {
         const data = await response.json()
         setError(data.error || 'Invalid password')
